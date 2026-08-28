@@ -51,7 +51,7 @@ Now add this plugin as a userplugin:
 
 ```sh
 cd src/userplugins
-git clone -b arena/01a0467e-vencord-plugin https://github.com/Glockerz/Vencord-Plugin.git tmp-plugin-clone
+git clone -b arena/01a04830-vencord-plugin --depth 1 https://github.com/Glockerz/Vencord-Plugin.git tmp-plugin-clone
 cp -r tmp-plugin-clone/deleteMyMessages ./deleteMyMessages
 rm -rf tmp-plugin-clone
 cd ../..
@@ -159,6 +159,99 @@ Follow the prompts (select your Discord install), then fully restart
 Discord.
 
 ---
+
+## Updating just the plugin
+
+The plugin folder is **copied** into your Vencord checkout, so Vencord will
+never pull plugin updates for you — you re-copy the folder and rebuild. One
+block does the whole thing (adjust the Vencord path if yours differs):
+
+```sh
+cd ~/Documents/Vencord
+git clone -b arena/01a04830-vencord-plugin --depth 1 https://github.com/Glockerz/Vencord-Plugin.git /tmp/vp-update
+rm -rf src/userplugins/deleteMyMessages
+cp -r /tmp/vp-update/deleteMyMessages src/userplugins/deleteMyMessages
+rm -rf /tmp/vp-update
+pnpm build
+echo '{}' > dist/package.json                                   # Vesktop workaround, see above
+grep -c "DeleteMyMessages" dist/vencordDesktopRenderer.js       # must print 1 or more
+```
+
+Then fully quit and relaunch your client (see the next section for the
+CachyOS-specific commands).
+
+Handy as a shell function so you never forget the `dist/package.json` step:
+
+```sh
+# bash/zsh  (~/.bashrc / ~/.zshrc)
+vupdate() {
+    (cd ~/Documents/Vencord \
+     && git clone -b arena/01a04830-vencord-plugin --depth 1 https://github.com/Glockerz/Vencord-Plugin.git /tmp/vp-update \
+     && rm -rf src/userplugins/deleteMyMessages \
+     && cp -r /tmp/vp-update/deleteMyMessages src/userplugins/deleteMyMessages \
+     && rm -rf /tmp/vp-update \
+     && pnpm build \
+     && echo '{}' > dist/package.json \
+     && grep -c "DeleteMyMessages" dist/vencordDesktopRenderer.js)
+}
+```
+```fish
+# fish  (~/.config/fish/config.fish)
+function vupdate
+    cd ~/Documents/Vencord
+    git clone -b arena/01a04830-vencord-plugin --depth 1 https://github.com/Glockerz/Vencord-Plugin.git /tmp/vp-update
+    rm -rf src/userplugins/deleteMyMessages
+    cp -r /tmp/vp-update/deleteMyMessages src/userplugins/deleteMyMessages
+    rm -rf /tmp/vp-update
+    pnpm build
+    echo '{}' > dist/package.json
+    grep -c "DeleteMyMessages" dist/vencordDesktopRenderer.js
+end
+```
+
+> `pnpm build` alone is enough after this — no need for `rm -rf dist` unless
+> the build output looks stale.
+
+### Restarting the client on CachyOS
+
+- **Vesktop from the repos/AUR** (`paru -S vesktop`): quit it properly first —
+  it hides in the tray, and a window close does not reload the build:
+  ```sh
+  pkill -f vesktop
+  vesktop &>/dev/null &
+  ```
+- **Vesktop Flatpak**:
+  ```sh
+  flatpak kill dev.vencord.Vesktop
+  flatpak run dev.vencord.Vesktop
+  ```
+- **Official Discord + `pnpm inject`**: fully quit Discord (tray included)
+  and start it again; re-run `pnpm inject` only if a Discord update replaced
+  the injected files.
+
+### Updating everything else on CachyOS
+
+CachyOS ships `paru`, which updates both the repo packages and your AUR
+packages in one go (no `sudo` needed — it asks for your password itself):
+
+```sh
+paru              # same as: paru -Syu
+```
+
+Optional extras:
+```sh
+paru -S vesktop                       # update the Vesktop app itself (repos/AUR install)
+flatpak update dev.vencord.Vesktop    # ...or the Flatpak, if that's how you installed it
+```
+
+Updating Vesktop or Discord does **not** touch your custom Vencord build —
+but a Discord client update can undo `pnpm inject`, and Vesktop can wipe
+`dist/` if `dist/package.json` is missing (see above). When in doubt, re-run
+`vupdate` and check with:
+
+```sh
+grep -c "DeleteMyMessages" ~/Documents/Vencord/dist/vencordDesktopRenderer.js
+```
 
 ## Updating later
 
