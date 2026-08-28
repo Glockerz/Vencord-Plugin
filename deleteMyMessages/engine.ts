@@ -159,6 +159,10 @@ export interface JobStats {
     lastPing: number | null;
     avgPing: number | null;
     etrMs: number;
+    /** how long the job has been running, refreshed on every progress event */
+    elapsedMs: number;
+    /** messages we still expect to have to delete (best estimate) */
+    remainingEstimate: number;
 }
 
 export type ConfirmFn = (state: JobState, stats: JobStats) => Promise<boolean>;
@@ -265,6 +269,9 @@ const MAX_LOG_ENTRIES = 80;
  */
 const EMPTY_PAGE_BACKOFF_MS = [2000, 4000, 8000, 15000];
 
+/** what a final "is anything left?" scan costs, used for the ETA */
+export const VERIFICATION_SCAN_MS = EMPTY_PAGE_BACKOFF_MS.reduce((a, b) => a + b, 0);
+
 /** Message types the delete endpoint accepts (same list undiscord uses). */
 function isDeletableType(type: number) {
     return type === 0 || (type >= 6 && type <= 21);
@@ -302,6 +309,7 @@ export class DeleteJob {
     private hitFallbackUsed = false;
     private warnedAboutOthers = false;
     private stuckPages = 0;
+    private stopReason?: string;
 
     constructor(filters: DeleteFilters, tuning: DeleteTuning, deps: Partial<Deps> = {}) {
         this.filters = filters;
@@ -362,12 +370,26 @@ export class DeleteJob {
             lastPing: null,
             avgPing: null,
             etrMs: 0,
+            elapsedMs: 0,
+            remainingEstimate: 0,
         };
+    }
+
+    /** how long the job ran for (or has been running, if still going) */
+    elapsedMs(): number {
+        return (this.stats.endTime ?? Date.now()) - this.stats.startTime;
+    }
+
+    /** deletions per minute so far - 0 until at least one message is gone */
+    messagesPerMinute(): number {
+        const minutes = this.elapsedMs() / 60000;
+        return minutes > 0 ? this.state.delCount / minutes : 0;
     }
 
     stop(reason = "Stopped by you.") {
         this.state.stopRequested = true;
         this.state.running = false;
+        this.stopReason = reason;
         this.log("warn", reason);
     }
 
@@ -404,13 +426,42 @@ export class DeleteJob {
         return this.filters.maxDeletions > 0 && this.state.delCount >= this.filters.maxDeletions;
     }
 
+    /**
+     * How many of your messages we still expect to delete.
+     *
+     * `queuedCount - delCount` alone is useless as a countdown: cursor paging
+     * only discovers ~25 messages per page, so the verified queue is almost
+     * always nearly empty and the ETA would claim "a few seconds left" for the
+     * entire run. Discord's own count for the query is the only forward-looking
+     * signal available, so we take whichever of the two is bigger - and the UI
+     * always labels the result as an estimate.
+     */
+    remainingEstimate(): number {
+        const verifiedLeft = Math.max(0, this.state.queuedCount - this.state.delCount);
+        const estimatedLeft = this.state.grandTotal > 0
+            ? Math.max(0, this.state.grandTotal - this.state.mineCount)
+            : 0;
+        return Math.max(verifiedLeft, estimatedLeft);
+    }
+
     private calcEtr() {
         const { searchDelayMs, deleteDelayMs } = this.tuning;
         const avgPing = this.stats.avgPing ?? 0;
-        const remaining = Math.max(0, this.state.queuedCount - this.state.delCount);
-        this.stats.etrMs =
-            searchDelayMs * Math.round(remaining / 25) +
+        const remaining = this.remainingEstimate();
+
+        let etr =
+            searchDelayMs * Math.ceil(remaining / 25) +
             (deleteDelayMs + avgPing) * remaining;
+
+        // A job that deleted something always runs one more full scan to prove
+        // nothing is left - that scan costs the empty-page backoff sequence.
+        if (!this.filters.dryRun && this.state.pass < this.tuning.maxSweeps) {
+            etr += VERIFICATION_SCAN_MS;
+        }
+
+        this.stats.etrMs = etr;
+        this.stats.remainingEstimate = remaining;
+        this.stats.elapsedMs = Date.now() - this.stats.startTime;
     }
 
     private beforeRequest() {
@@ -440,6 +491,7 @@ export class DeleteJob {
         this.hitFallbackUsed = false;
         this.warnedAboutOthers = false;
         this.stuckPages = 0;
+        this.stopReason = undefined;
         this.state.running = true;
 
         let reason = "Finished - no more of your matching messages were found.";
@@ -515,12 +567,12 @@ export class DeleteJob {
 
         for (;;) {
             if (this.state.stopRequested) {
-                return { kind: "stopped", deleted: deletedThisPass, reason: "Stopped by you." };
+                return { kind: "stopped", deleted: deletedThisPass, reason: this.stopReason ?? "Stopped by you." };
             }
 
             const data = await this.search();
             if (this.state.stopRequested) {
-                return { kind: "stopped", deleted: deletedThisPass, reason: "Stopped by you." };
+                return { kind: "stopped", deleted: deletedThisPass, reason: this.stopReason ?? "Stopped by you." };
             }
 
             const { toDelete, newestId, hitCount } = this.filterResponse(data);
@@ -559,7 +611,11 @@ export class DeleteJob {
 
             if (toDelete.length > 0) {
                 if (!(await this.confirmGate())) {
-                    return { kind: "stopped", deleted: deletedThisPass, reason: "Cancelled - you did not confirm." };
+                    return {
+                        kind: "stopped",
+                        deleted: deletedThisPass,
+                        reason: this.stopReason ?? "Cancelled - you did not confirm.",
+                    };
                 }
 
                 if (this.filters.dryRun) {
@@ -603,7 +659,7 @@ export class DeleteJob {
             }
 
             if (this.state.stopRequested) {
-                return { kind: "stopped", deleted: deletedThisPass, reason: "Stopped by you." };
+                return { kind: "stopped", deleted: deletedThisPass, reason: this.stopReason ?? "Stopped by you." };
             }
 
             await this.sleep(jitter(this.tuning.searchDelayMs));
@@ -612,6 +668,8 @@ export class DeleteJob {
 
     private async confirmGate(): Promise<boolean> {
         if (this.confirmationAsked) return true;
+        // stopped before the dialog was ever answered
+        if (this.state.stopRequested) return false;
         this.confirmationAsked = true;
         if (!this.onConfirm) return true;
 

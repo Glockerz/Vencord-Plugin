@@ -21,6 +21,9 @@ feel unreliable:
   verified against your account before it can be deleted, and the numbers
   shown are counted from messages actually inspected rather than from
   Discord's unreliable `total_results` estimate.
+- **It runs in the background.** Close the window, switch server, keep
+  chatting — the job carries on. A trash icon in the chat box shows live
+  progress and reopens the window; speed (ms) is set when you start it.
 
 See [`deleteMyMessages/README.md`](./deleteMyMessages/README.md) for
 plugin-specific usage instructions, [`tests/README.md`](./tests/README.md) for

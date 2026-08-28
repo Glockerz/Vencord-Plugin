@@ -33,6 +33,16 @@ declare module "@webpack/common" {
     export const UserStore: {
         getCurrentUser(): { id: string; username: string; };
     };
+    export const Toasts: {
+        Type: Record<string, string>;
+        Position: Record<string, number>;
+        genId(): string;
+        show(data: any): void;
+        pop(): void;
+        create(message: string, type: string, options?: any): any;
+    };
+    export function showToast(message: string, type?: string, options?: any): void;
+
     export const RestAPI: {
         get(opts: { url: string; }): Promise<any>;
         post(opts: { url: string; body?: any; }): Promise<any>;
@@ -129,4 +139,24 @@ declare module "@api/ContextMenu" {
     export function addContextMenuPatch(navId: string | string[], callback: NavContextMenuPatchCallback): void;
     export function removeContextMenuPatch(navId: string | string[], callback: NavContextMenuPatchCallback): void;
     export function findGroupChildrenByChildId(id: string, children: any[]): any[] | undefined;
+}
+
+declare module "@api/ChatButtons" {
+    import type { ComponentType, ReactNode } from "react";
+
+    export interface ChatBarButtonProps {
+        children: ReactNode;
+        tooltip: string;
+        onClick(event: any): void;
+        onContextMenu?(event: any): void;
+        onAuxClick?(event: any): void;
+        buttonProps?: Record<string, any>;
+    }
+
+    export const ChatBarButton: ComponentType<ChatBarButtonProps>;
+    export type ChatBarButtonFactory = (props: any) => any;
+    export type IconComponent = (props: any) => any;
+
+    export function addChatBarButton(id: string, render: ChatBarButtonFactory, icon: IconComponent): void;
+    export function removeChatBarButton(id: string): void;
 }
