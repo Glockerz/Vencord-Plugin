@@ -62,7 +62,11 @@ export default definePlugin({
     name: "DeleteMyMessages",
     description:
         "Bulk-delete your own messages in a channel, DM, or across a whole server - with Undiscord-style rate-limit safeguards, confirmation, and dry-run preview.",
-    authors: [{ name: "You", id: 0n }], // replace with your own name/id before publishing
+    // Static attribution shown in the plugin list - purely cosmetic, not tied
+    // to whichever account runs the plugin. Message deletion always targets
+    // UserStore.getCurrentUser().id at runtime (see engine.ts), regardless
+    // of what's set here. Feel free to put your own name/id in, or leave it.
+    authors: [{ name: "You", id: 0n }],
     settings,
 
     dependencies: ["CommandsAPI"],
