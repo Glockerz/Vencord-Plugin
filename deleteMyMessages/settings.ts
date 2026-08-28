@@ -23,6 +23,12 @@ export const settings = definePluginSettings({
         description: "How many times to retry deleting a single message before giving up on it.",
         default: 3,
     },
+    maxScans: {
+        type: OptionType.NUMBER,
+        description:
+            "How many full oldest-to-newest scans of the channel to run. A scan that deletes nothing ends the job, so the tool keeps re-scanning until every message of yours is gone (Discord's search index often reports messages late). Raise this for very large channels.",
+        default: 5,
+    },
     addContextMenuEntry: {
         type: OptionType.BOOLEAN,
         description: "Add a \"Delete My Messages...\" option to channel/DM right-click context menus.",
