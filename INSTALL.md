@@ -160,6 +160,35 @@ Discord.
 
 ---
 
+## Updating later
+
+Once you're set up with a custom build, **Vesktop will not auto-update
+Vencord for you anymore** — it just keeps using whatever's in your `dist`
+folder. To pull in upstream Vencord changes, rebuild manually whenever you
+want:
+
+```sh
+cd ~/Documents/Vencord
+git pull
+pnpm install
+pnpm build
+echo '{}' > dist/package.json
+```
+Then fully restart Vesktop (or your `vbuild` shell function from above, if
+you set it up — just add `git pull` at the top of it).
+
+Vesktop **itself** (the app) still auto-updates normally through its own
+updater/Flatpak — that's unrelated to this and unaffected either way.
+
+> **Don't use Vesktop's "Force Update Vencord" menu option** (tray icon
+> right-click, or the app menu) while running a custom build with plugins —
+> it downloads the official prebuilt Vencord files directly into your
+> `dist` folder, overwriting your build and removing any custom plugins.
+> If you click it by accident, just rerun `pnpm build` to restore your
+> custom build.
+
+---
+
 ## Verifying the plugin loaded
 
 Open DevTools in your client (`Ctrl+Shift+I`), go to the Console tab, and
