@@ -10,4 +10,7 @@ filter → confirm → delete, with rate-limit backoff, configurable delays,
 dry-run preview, and a hard cap on how many messages get deleted).
 
 See [`deleteMyMessages/README.md`](./deleteMyMessages/README.md) for
-installation and usage instructions.
+plugin-specific usage instructions, and
+[`INSTALL.md`](./INSTALL.md) for the full step-by-step guide to building
+Vencord from source with this plugin included and pointing your client at
+it (including fixes for the common pitfalls people hit along the way).
