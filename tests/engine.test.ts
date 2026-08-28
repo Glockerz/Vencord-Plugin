@@ -28,7 +28,6 @@ function makeJob(fake: FakeDiscord, filterOverrides: Partial<DeleteFilters> = {}
         includePinned: false,
         includeNsfw: true,
         maxDeletions: 0,
-        dryRun: false,
         ...filterOverrides,
     };
 
@@ -202,20 +201,6 @@ test("respects the max-deletions cap", async () => {
     assert.equal(fake.deleted.size, 7);
     assert.equal(state.delCount, 7);
     assert.match(reason, /limit of 7/);
-});
-
-test("dry run counts everything but deletes nothing", async () => {
-    const { messages } = buildChannel({ mine: 33, others: 12 });
-    const fake = new FakeDiscord({ messages });
-    const { job, done } = makeJob(fake, { dryRun: true });
-
-    job.run();
-    const { state } = await done;
-
-    assert.equal(fake.deleteCount, 0, "dry run must not send a single DELETE");
-    assert.equal(fake.deleted.size, 0);
-    assert.equal(state.delCount, 33, "dry run still reports what would be deleted");
-    assert.equal(state.mineCount, 33);
 });
 
 test("pinned messages are kept unless explicitly included", async () => {

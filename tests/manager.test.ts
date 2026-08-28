@@ -26,7 +26,6 @@ function filtersFor(fake: FakeDiscord, overrides: Partial<DeleteFilters> = {}): 
         includePinned: false,
         includeNsfw: true,
         maxDeletions: 0,
-        dryRun: false,
         ...overrides,
     };
 }
