@@ -152,6 +152,14 @@ const MIN_SEARCH_DELAY_MS = 400;
 const MIN_DELETE_DELAY_MS = 300;
 const MAX_CONSECUTIVE_HARD_ERRORS = 5;
 
+// Discord's message-search index lags behind real deletions - it can take
+// several seconds (sometimes 30s+) to catch up after a batch of deletes.
+// A page that comes back empty right after deleting doesn't necessarily mean
+// we're actually done, so we retry a handful of times with a longer wait
+// before concluding the job has finished. See victornpb/undiscord#584.
+const EMPTY_PAGE_MAX_RETRIES = 6;
+const EMPTY_PAGE_RETRY_DELAY_MS = 5000;
+
 export class DeleteJob {
     filters: DeleteFilters;
     tuning: DeleteTuning;
@@ -166,6 +174,7 @@ export class DeleteJob {
     private authorId: string;
     private beforeTs = 0;
     private consecutiveHardErrors = 0;
+    private emptyPageRetries = 0;
 
     constructor(filters: DeleteFilters, tuning: DeleteTuning) {
         this.filters = filters;
@@ -256,6 +265,7 @@ export class DeleteJob {
                 this.onProgress?.(this.state, this.stats);
 
                 if (this.state.messagesToDelete.length > 0) {
+                    this.emptyPageRetries = 0;
                     if (!askedConfirmation) {
                         askedConfirmation = true;
                         const confirmed = this.onConfirm
@@ -292,8 +302,26 @@ export class DeleteJob {
                     // Nothing deletable on this page (e.g. all system messages) -
                     // adjust offset and keep paging, same trick undiscord uses.
                     this.state.offset += this.state.skippedMessages.length;
+                    this.emptyPageRetries = 0;
+                } else if (
+                    this.state.grandTotal > 0 &&
+                    this.state.delCount + this.state.skipCount < this.state.grandTotal &&
+                    this.emptyPageRetries < EMPTY_PAGE_MAX_RETRIES
+                ) {
+                    // Empty page, but Discord previously told us there were more
+                    // matching messages than we've actually processed so far.
+                    // This almost always means the search index hasn't caught up
+                    // with our recent deletes yet - wait longer and retry instead
+                    // of assuming we're finished.
+                    this.emptyPageRetries++;
+                    this.onProgress?.(this.state, this.stats);
+                    await wait(EMPTY_PAGE_RETRY_DELAY_MS);
+                    if (this.state.stopRequested) break;
+                    await wait(jitter(this.tuning.searchDelayMs));
+                    continue;
                 } else {
-                    // Empty page => we've reached the end of the results.
+                    // Truly empty, or we've retried enough times - we've
+                    // reached the end of the results.
                     this.state.running = false;
                 }
 
