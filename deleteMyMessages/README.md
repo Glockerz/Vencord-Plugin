@@ -30,6 +30,38 @@ itself performs requests.
   actually happens.
 - **A configurable "max messages to delete" cap** for extra peace of mind.
 
+## Runs in the background
+
+The job does **not** belong to the window. Start it, then close the window,
+switch to another DM or server, or just carry on chatting — it keeps deleting.
+
+- A permanent **trash icon sits in the chat box toolbar** in every channel.
+  Its tooltip shows live progress (`running: 128 deleted in 0h 4m 11s`), it
+  turns red while a job runs and amber when the job is parked waiting for you
+  to confirm. Click it to reopen the window.
+- `/deletemymessages` reopens it too, from anywhere.
+- The window shows **time running**, deletions per minute, the live log, and
+  an explicit **"Keep running in background"** button next to **Stop now**.
+- Closing the window never stops the job. Turning the plugin off does (that is
+  the only silent stop, and it is logged).
+- A toast tells you when it is waiting for confirmation and when it finishes.
+
+## Speed is set when you start it
+
+The start dialog has **Search delay (ms)** and **Delete delay (ms)** fields
+(defaults come from plugin settings, floors of 400ms / 300ms are enforced), so
+you can go slower for a big job without digging into Settings first.
+
+## Time remaining is an estimate, and says so
+
+With cursor paging the tool only discovers ~25 of your messages per page, so
+"messages found" trails far behind reality for most of a run. The ETA therefore
+uses whichever is larger: the messages it has already verified are still to be
+deleted, or Discord's count for the query minus what it has seen so far. It is
+labelled as an estimate, the message count next to it is shown as approximate,
+and it also budgets for the final verification scan. The counts themselves
+(deleted / failed / already gone / filtered out) are always exact.
+
 ## How it keeps going until *everything* of yours is gone
 
 Discord's message-search index lags behind real deletions — often by several
@@ -85,6 +117,17 @@ Everything in the UI is counted from messages the tool actually inspected:
 | `maxAttempts` | 3 | delete attempts per message |
 | `maxScans` | 5 | full oldest→newest scans; a scan that deletes nothing ends the job |
 | `addContextMenuEntry` | on | adds "Delete My Messages…" to channel/DM menus |
+
+Search/delete delays are defaults only — the start dialog lets you override
+them per job.
+
+## The warning is the point
+
+Automating your account is **self-botting**, which Discord's Terms of Service
+forbid and which has gotten accounts terminated. The tool says so in its
+subtitle, in a red box on the start and confirm screens, in the slash-command
+reply, and in the plugin description — deliberately, every time, because the
+downside is your account and not a re-run.
 
 ## Installation (userplugin)
 

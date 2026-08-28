@@ -6,7 +6,9 @@
 
 /**
  * Modal UI for configuring, confirming and monitoring a deletion job.
- * Loosely mirrors the popup UI of victornpb/undiscord.
+ *
+ * This is only a *view*: the job itself lives in ./manager.ts, so closing this
+ * window (or switching to another channel) leaves it running.
  */
 
 import { FormSwitch } from "@components/FormSwitch";
@@ -20,19 +22,18 @@ import {
     GuildStore,
     Modal,
     TextInput,
-    useRef,
+    useEffect,
     useState,
 } from "@webpack/common";
 
-import { DeleteFilters, DeleteJob, DeleteTuning, JobState, JobStats, SearchMessage, msToHMS, resolveChannelScope } from "./engine";
+import { msToHMS, resolveChannelScope, type DeleteFilters, type DeleteTuning, type JobState, type SearchMessage } from "./engine";
+import { jobManager } from "./manager";
 import { settings } from "./settings";
 
 interface Props {
     initialChannelId: string;
     modalProps: RenderModalProps;
 }
-
-type Phase = "config" | "confirm" | "running" | "done";
 
 const PREVIEW_COUNT = 10;
 const PREVIEW_SNIPPET = 90;
@@ -46,6 +47,34 @@ function Label({ children }: { children: ReactNode; }) {
         <Forms.FormTitle tag="h5" style={{ marginBottom: 4 }}>
             {children}
         </Forms.FormTitle>
+    );
+}
+
+function Warning({ children }: { children?: ReactNode; }) {
+    return (
+        <div
+            style={{
+                marginBottom: 16,
+                padding: "10px 12px",
+                borderRadius: 4,
+                border: "1px solid var(--text-danger)",
+                background: "var(--background-secondary)",
+            }}
+        >
+            <Forms.FormTitle tag="h5" style={{ color: "var(--text-danger)", marginBottom: 4 }}>
+                Read this before you start
+            </Forms.FormTitle>
+            <Forms.FormText style={{ fontSize: 13 }}>
+                This automates your account, which Discord calls <b>self-botting</b> and forbids in its
+                Terms of Service. Accounts have been <b>terminated</b> for it. Deleted messages
+                cannot be recovered.
+            </Forms.FormText>
+            <Forms.FormText style={{ fontSize: 13, marginTop: 6 }}>
+                If you go ahead: keep the delays high, delete in small batches, dry-run first, and
+                stop immediately if Discord starts rate-limiting you.
+            </Forms.FormText>
+            {children}
+        </div>
     );
 }
 
@@ -94,7 +123,19 @@ function LogBox({ state }: { state: JobState; }) {
 }
 
 export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
-    const [phase, setPhase] = useState<Phase>("config");
+    // re-render whenever the background job reports something, plus once a
+    // second while it runs so the elapsed clock ticks
+    const [, forceRender] = useState(0);
+    useEffect(() => jobManager.subscribe(() => forceRender(x => x + 1)), []);
+
+    const entry = jobManager.current;
+    const isRunning = jobManager.isRunning;
+
+    useEffect(() => {
+        if (!isRunning) return;
+        const timer = setInterval(() => forceRender(x => x + 1), 1000);
+        return () => clearInterval(timer);
+    }, [isRunning]);
 
     // --- scope -------------------------------------------------------------
     const channel = ChannelStore.getChannel(initialChannelId);
@@ -114,13 +155,10 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
     const [maxDeletions, setMaxDeletions] = useState("0");
     const [dryRun, setDryRun] = useState(true);
 
-    // --- job state -------------------------------------------------------------
-    const [job, setJob] = useState<DeleteJob | null>(null);
-    const [state, setState] = useState<JobState | null>(null);
-    const [stats, setStats] = useState<JobStats | null>(null);
-    const [stopReason, setStopReason] = useState<string | null>(null);
+    // --- speed (settable here so you don't have to dig into plugin settings) ---
+    const [searchDelay, setSearchDelay] = useState(String(settings.store.searchDelay));
+    const [deleteDelay, setDeleteDelay] = useState(String(settings.store.deleteDelay));
     const [error, setError] = useState<string | null>(null);
-    const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
 
     if (!channel) {
         return (
@@ -131,6 +169,14 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
             </Modal>
         );
     }
+
+    const isConfigPhase = !entry;
+    const isConfirmPhase = !!entry && jobManager.needsConfirmation;
+    const isRunningPhase = !!entry && !entry.done && !jobManager.needsConfirmation;
+    const isDonePhase = !!entry?.done;
+
+    const state = entry?.state ?? null;
+    const stats = entry?.stats ?? null;
 
     function buildFilters(): DeleteFilters {
         return {
@@ -152,8 +198,8 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
 
     function buildTuning(): DeleteTuning {
         return {
-            searchDelayMs: settings.store.searchDelay,
-            deleteDelayMs: settings.store.deleteDelay,
+            searchDelayMs: Math.max(400, parseInt(searchDelay, 10) || settings.store.searchDelay),
+            deleteDelayMs: Math.max(300, parseInt(deleteDelay, 10) || settings.store.deleteDelay),
             maxAttemptsPerMessage: settings.store.maxAttempts,
             maxSweeps: settings.store.maxScans,
         };
@@ -161,113 +207,57 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
 
     function start() {
         setError(null);
-        setStopReason(null);
-
-        let filters: DeleteFilters;
         try {
             resolveChannelScope(initialChannelId);
-            filters = buildFilters();
+            jobManager.start(buildFilters(), buildTuning(), initialChannelId);
         } catch (e: any) {
             setError(String(e?.message ?? e));
-            return;
         }
-
-        const newJob = new DeleteJob(filters, buildTuning());
-
-        newJob.onProgress = (s, st) => {
-            setState({ ...s, log: [...s.log] });
-            setStats({ ...st });
-        };
-        newJob.onStop = (s, st, reason) => {
-            setState({ ...s, log: [...s.log] });
-            setStats({ ...st });
-            setStopReason(reason);
-            setPhase("done");
-        };
-        newJob.onConfirm = () => {
-            setState({ ...newJob.state, log: [...newJob.state.log] });
-            setStats({ ...newJob.stats });
-            setPhase("confirm");
-            return new Promise<boolean>(resolve => {
-                confirmResolveRef.current = resolve;
-            });
-        };
-
-        setJob(newJob);
-        setPhase("running");
-        newJob.run();
     }
-
-    function confirmAccept() {
-        const resolve = confirmResolveRef.current;
-        confirmResolveRef.current = null;
-        setPhase("running");
-        resolve?.(true);
-    }
-    function confirmReject() {
-        const resolve = confirmResolveRef.current;
-        confirmResolveRef.current = null;
-        // the engine flips to the "done" phase itself via onStop
-        resolve?.(false);
-    }
-
-    function stopNow() {
-        job?.stop("Stopped by you.");
-    }
-
-    /** Closing the window must never leave a job running with no Stop button */
-    function handleClose() {
-        const resolve = confirmResolveRef.current;
-        confirmResolveRef.current = null;
-        resolve?.(false);
-        job?.stop("Stopped because the window was closed.");
-        modalProps.onClose();
-    }
-
-    const isConfigPhase = phase === "config";
-    const isConfirmPhase = phase === "confirm";
-    const isRunningPhase = phase === "running";
-    const isDonePhase = phase === "done";
-
-    const actions =
-        isConfigPhase
-            ? [
-                {
-                    text: dryRun ? "Start dry run" : "Start deleting",
-                    variant: "critical-primary" as const,
-                    onClick: start,
-                },
-                { text: "Cancel", variant: "secondary" as const, onClick: modalProps.onClose },
-            ]
-            : isConfirmPhase
-                ? [
-                    { text: "Yes, proceed", variant: "critical-primary" as const, onClick: confirmAccept },
-                    { text: "Cancel", variant: "secondary" as const, onClick: confirmReject },
-                ]
-                : isRunningPhase
-                    ? [{ text: "Stop", variant: "critical-primary" as const, onClick: stopNow }]
-                    : [{ text: "Close", variant: "secondary" as const, onClick: modalProps.onClose }];
 
     const preview = state?.messagesToDelete.slice(0, PREVIEW_COUNT) ?? [];
+    const originChannel = entry ? ChannelStore.getChannel(entry.originChannelId) : undefined;
+    const originName = (originChannel as any)?.name ?? entry?.originChannelId ?? initialChannelId;
+
+    const actions = isConfigPhase
+        ? [
+            {
+                text: dryRun ? "Start dry run" : "Start deleting",
+                variant: "critical-primary" as const,
+                onClick: start,
+            },
+            { text: "Cancel", variant: "secondary" as const, onClick: modalProps.onClose },
+        ]
+        : isConfirmPhase
+            ? [
+                { text: "Yes, proceed", variant: "critical-primary" as const, onClick: () => jobManager.confirm(true) },
+                { text: "Cancel", variant: "secondary" as const, onClick: () => jobManager.confirm(false) },
+            ]
+            : isRunningPhase
+                ? [
+                    { text: "Stop now", variant: "critical-primary" as const, onClick: () => jobManager.stop("Stopped by you.") },
+                    {
+                        text: "Keep running in background",
+                        variant: "secondary" as const,
+                        onClick: modalProps.onClose,
+                    },
+                ]
+                : [
+                    { text: "Close", variant: "secondary" as const, onClick: modalProps.onClose },
+                    { text: "Start another", variant: "primary" as const, onClick: () => jobManager.clear() },
+                ];
 
     return (
         <Modal
             {...modalProps}
-            onClose={handleClose}
             title="Delete My Messages"
-            subtitle="Bulk-delete only your own messages - Undiscord-style safeguards apply."
+            subtitle="Automates your account (self-botting) - against Discord's ToS and can get you banned."
             actions={actions}
         >
-            <Forms.FormText style={{ margin: "0 0 16px" }}>
-                Inspired by{" "}
-                <a href="https://github.com/victornpb/undiscord" target="_blank" rel="noreferrer">
-                    Undiscord
-                </a>
-                . This only ever deletes messages sent by you, and this action cannot be undone.
-            </Forms.FormText>
-
             {isConfigPhase && (
                 <>
+                    <Warning />
+
                     <Row>
                         <Label>Where</Label>
                         <Forms.FormText>
@@ -292,6 +282,32 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                                 </Button>
                             </div>
                         )}
+                    </Row>
+
+                    <Row>
+                        <Label>Speed</Label>
+                        <div style={{ display: "flex", gap: 12 }}>
+                            <div style={{ flex: 1 }}>
+                                <Forms.FormText style={{ fontSize: 12 }}>Search delay (ms, min 400)</Forms.FormText>
+                                <TextInput
+                                    value={searchDelay}
+                                    onChange={(v: string) => setSearchDelay(v.replace(/[^0-9]/g, ""))}
+                                    placeholder="1500"
+                                />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <Forms.FormText style={{ fontSize: 12 }}>Delete delay (ms, min 300)</Forms.FormText>
+                                <TextInput
+                                    value={deleteDelay}
+                                    onChange={(v: string) => setDeleteDelay(v.replace(/[^0-9]/g, ""))}
+                                    placeholder="1200"
+                                />
+                            </div>
+                        </div>
+                        <Forms.FormText style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                            Lower is faster and more likely to get your account flagged. Defaults come from
+                            Settings → Vencord → Plugins → DeleteMyMessages.
+                        </Forms.FormText>
                     </Row>
 
                     <Row>
@@ -357,13 +373,13 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
 
             {isConfirmPhase && state && (
                 <>
+                    <Warning />
                     <Row>
                         <Forms.FormTitle tag="h4">Confirm deletion</Forms.FormTitle>
                         <Forms.FormText>
                             This first page holds <b>{state.messagesToDelete.length}</b> of <b>your</b> messages that
                             match your filters. The tool then keeps scanning oldest → newest and deletes{" "}
-                            <b>every message of yours</b> that matches - the totals below grow as it goes, so this
-                            is not the final number.
+                            <b>every message of yours</b> that matches, so this is not the final number.
                         </Forms.FormText>
                         {state.notMineCount > 0 && (
                             <Forms.FormText style={{ marginTop: 4 }}>
@@ -372,9 +388,9 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                             </Forms.FormText>
                         )}
                         <Forms.FormText style={{ marginTop: 8 }}>
-                            {dryRun
+                            {entry?.filters.dryRun
                                 ? "Dry run is ON - nothing will actually be deleted."
-                                : "This will PERMANENTLY delete these messages. This cannot be undone."}
+                                : "This will PERMANENTLY delete these messages, in the background, until you press Stop."}
                         </Forms.FormText>
                     </Row>
 
@@ -406,13 +422,27 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                 </>
             )}
 
-            {(isRunningPhase || isDonePhase) && state && stats && (
+            {(isRunningPhase || isDonePhase) && state && stats && entry && (
                 <>
                     <Row>
                         <Forms.FormTitle tag="h4">
-                            {isDonePhase ? (dryRun ? "Dry run finished" : "Finished") : "Running..."}
+                            {isDonePhase
+                                ? (entry.filters.dryRun ? "Dry run finished" : "Finished")
+                                : "Running in the background..."}
                         </Forms.FormTitle>
 
+                        {isRunningPhase && (
+                            <Forms.FormText style={{ color: "var(--text-muted)" }}>
+                                You can close this window, switch channel or server - it keeps going. Reopen it
+                                from the trash icon next to the chat box, or with /deletemymessages.
+                            </Forms.FormText>
+                        )}
+
+                        <Forms.FormText>
+                            <b>Time running:</b> {msToHMS(entry.job.elapsedMs())}
+                            {isDonePhase && <>&nbsp;(total)</>}
+                            &nbsp;|&nbsp; <b>Speed:</b> {entry.job.messagesPerMinute().toFixed(1)} msg/min
+                        </Forms.FormText>
                         <Forms.FormText>
                             <b>Your messages found:</b> {state.mineCount}
                             {state.notMineCount > 0 && (
@@ -426,29 +456,35 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                             )}
                         </Forms.FormText>
                         <Forms.FormText>
-                            <b>{dryRun ? "Would delete" : "Deleted"}:</b> {state.delCount}
+                            <b>{entry.filters.dryRun ? "Would delete" : "Deleted"}:</b> {state.delCount}
                             &nbsp;|&nbsp; <b>Failed:</b> {state.failCount}
                             &nbsp;|&nbsp; <b>Already gone:</b> {state.goneCount}
                             &nbsp;|&nbsp; <b>Skipped:</b> {state.skipCount}
                         </Forms.FormText>
+                        {isRunningPhase && (
+                            <Forms.FormText>
+                                <b>Time remaining:</b> ~{msToHMS(stats.etrMs)}
+                                <span style={{ color: "var(--text-muted)" }}>
+                                    {" "}(estimate - about {stats.remainingEstimate} message(s) left; Discord's
+                                    search count is approximate, so treat this as a rough guide)
+                                </span>
+                            </Forms.FormText>
+                        )}
                         <Forms.FormText style={{ color: "var(--text-muted)" }}>
                             Scan {state.pass} of up to {settings.store.maxScans} · {state.pages} search page(s) ·{" "}
-                            {state.scannedCount} search hit(s) inspected
+                            {state.scannedCount} search hit(s) inspected · target #{originName}
                         </Forms.FormText>
                         {state.grandTotal > 0 && (
                             <Forms.FormText style={{ color: "var(--text-muted)" }}>
-                                Discord's own estimate for the query was ~{state.grandTotal} - that number is
-                                unreliable and is not used to decide anything.
+                                Discord's own estimate for the query was ~{state.grandTotal} - used only for the
+                                time estimate above, never to decide when to stop.
                             </Forms.FormText>
                         )}
                         <Forms.FormText>
                             Rate-limited {stats.throttledCount} time(s), total wait {msToHMS(stats.throttledTotalTime)}
                         </Forms.FormText>
-                        {isRunningPhase && (
-                            <Forms.FormText>Estimated time remaining: {msToHMS(stats.etrMs)}</Forms.FormText>
-                        )}
-                        {isDonePhase && stopReason && (
-                            <Forms.FormText style={{ marginTop: 8 }}>{stopReason}</Forms.FormText>
+                        {isDonePhase && entry.reason && (
+                            <Forms.FormText style={{ marginTop: 8 }}>{entry.reason}</Forms.FormText>
                         )}
                     </Row>
 

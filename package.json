@@ -5,7 +5,7 @@
     "type": "module",
     "description": "DeleteMyMessages - a Vencord userplugin that bulk-deletes your own Discord messages (Undiscord-style).",
     "scripts": {
-        "test": "node --import ./tests/register.mjs --test tests/engine.test.ts",
+        "test": "node --import ./tests/register.mjs --test tests/engine.test.ts tests/manager.test.ts",
         "typecheck": "tsc --noEmit -p tsconfig.json",
         "check": "npm run typecheck && npm test"
     },
