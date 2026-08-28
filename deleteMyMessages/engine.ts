@@ -157,7 +157,7 @@ const MAX_CONSECUTIVE_HARD_ERRORS = 5;
 // A page that comes back empty right after deleting doesn't necessarily mean
 // we're actually done, so we retry a handful of times with a longer wait
 // before concluding the job has finished. See victornpb/undiscord#584.
-const EMPTY_PAGE_MAX_RETRIES = 6;
+const EMPTY_PAGE_MAX_RETRIES = 9;
 const EMPTY_PAGE_RETRY_DELAY_MS = 5000;
 
 export class DeleteJob {
@@ -175,6 +175,7 @@ export class DeleteJob {
     private beforeTs = 0;
     private consecutiveHardErrors = 0;
     private emptyPageRetries = 0;
+    private sortOrder: "desc" | "asc" = "desc";
 
     constructor(filters: DeleteFilters, tuning: DeleteTuning) {
         this.filters = filters;
@@ -303,25 +304,26 @@ export class DeleteJob {
                     // adjust offset and keep paging, same trick undiscord uses.
                     this.state.offset += this.state.skippedMessages.length;
                     this.emptyPageRetries = 0;
-                } else if (
-                    this.state.grandTotal > 0 &&
-                    this.state.delCount + this.state.skipCount < this.state.grandTotal &&
-                    this.emptyPageRetries < EMPTY_PAGE_MAX_RETRIES
-                ) {
-                    // Empty page, but Discord previously told us there were more
-                    // matching messages than we've actually processed so far.
-                    // This almost always means the search index hasn't caught up
-                    // with our recent deletes yet - wait longer and retry instead
-                    // of assuming we're finished.
+                } else if (this.emptyPageRetries < EMPTY_PAGE_MAX_RETRIES) {
+                    // Empty page. Discord's reported total_results is only an
+                    // estimate and can't be trusted to decide "we're done" -
+                    // it's frequently wrong (especially in DMs/group DMs), and
+                    // even when right, the search index itself lags behind
+                    // real deletions by several seconds. So instead of trusting
+                    // any count, we just retry empty pages a handful of times,
+                    // flipping sort order (old<->new) each time like undiscord
+                    // does, to route around whatever part of the index is stale.
                     this.emptyPageRetries++;
+                    this.sortOrder = this.sortOrder === "desc" ? "asc" : "desc";
+                    this.state.offset = 0;
                     this.onProgress?.(this.state, this.stats);
                     await wait(EMPTY_PAGE_RETRY_DELAY_MS);
                     if (this.state.stopRequested) break;
                     await wait(jitter(this.tuning.searchDelayMs));
                     continue;
                 } else {
-                    // Truly empty, or we've retried enough times - we've
-                    // reached the end of the results.
+                    // Retried enough times with no luck in either sort order -
+                    // we've genuinely reached the end of the results.
                     this.state.running = false;
                 }
 
@@ -361,7 +363,7 @@ export class DeleteJob {
             ["min_id", minId ? toSnowflake(minId) : undefined],
             ["max_id", maxId ? toSnowflake(maxId) : undefined],
             ["sort_by", "timestamp"],
-            ["sort_order", "desc"],
+            ["sort_order", this.sortOrder],
             ["offset", String(this.state.offset)],
             ["content", content || undefined],
         ];
