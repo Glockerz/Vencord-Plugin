@@ -70,8 +70,9 @@ function Warning({ children }: { children?: ReactNode; }) {
                 cannot be recovered.
             </Forms.FormText>
             <Forms.FormText style={{ fontSize: 13, marginTop: 6 }}>
-                If you go ahead: keep the delays high, delete in small batches, dry-run first, and
-                stop immediately if Discord starts rate-limiting you.
+                If you go ahead: keep the delays high, start with a small <b>Max messages to
+                delete</b> cap to test on a handful of messages, and stop immediately if Discord
+                starts rate-limiting you.
             </Forms.FormText>
             {children}
         </div>
@@ -153,7 +154,6 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
     const [minId, setMinId] = useState("");
     const [maxId, setMaxId] = useState("");
     const [maxDeletions, setMaxDeletions] = useState("0");
-    const [dryRun, setDryRun] = useState(true);
 
     // --- speed (settable here so you don't have to dig into plugin settings) ---
     const [searchDelay, setSearchDelay] = useState(String(settings.store.searchDelay));
@@ -192,7 +192,6 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
             minId: minId.trim() || undefined,
             maxId: maxId.trim() || undefined,
             maxDeletions: Math.max(0, parseInt(maxDeletions, 10) || 0),
-            dryRun,
         };
     }
 
@@ -222,7 +221,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
     const actions = isConfigPhase
         ? [
             {
-                text: dryRun ? "Start dry run" : "Start deleting",
+                text: "Start deleting",
                 variant: "critical-primary" as const,
                 onClick: start,
             },
@@ -355,16 +354,6 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                         />
                     </Row>
 
-                    <Row>
-                        <FormSwitch
-                            title="Dry run (don't actually delete)"
-                            description="Recommended: preview counts without deleting anything first."
-                            value={dryRun}
-                            onChange={setDryRun}
-                            hideBorder
-                        />
-                    </Row>
-
                     {error && (
                         <Forms.FormText style={{ color: "var(--text-danger)" }}>{error}</Forms.FormText>
                     )}
@@ -388,9 +377,8 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                             </Forms.FormText>
                         )}
                         <Forms.FormText style={{ marginTop: 8 }}>
-                            {entry?.filters.dryRun
-                                ? "Dry run is ON - nothing will actually be deleted."
-                                : "This will PERMANENTLY delete these messages, in the background, until you press Stop."}
+                            This will PERMANENTLY delete these messages, in the background, until
+                            you press Stop. Nothing can be recovered.
                         </Forms.FormText>
                     </Row>
 
@@ -426,9 +414,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                 <>
                     <Row>
                         <Forms.FormTitle tag="h4">
-                            {isDonePhase
-                                ? (entry.filters.dryRun ? "Dry run finished" : "Finished")
-                                : "Running in the background..."}
+                            {isDonePhase ? "Finished" : "Running in the background..."}
                         </Forms.FormTitle>
 
                         {isRunningPhase && (
@@ -456,7 +442,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                             )}
                         </Forms.FormText>
                         <Forms.FormText>
-                            <b>{entry.filters.dryRun ? "Would delete" : "Deleted"}:</b> {state.delCount}
+                            <b>Deleted:</b> {state.delCount}
                             &nbsp;|&nbsp; <b>Failed:</b> {state.failCount}
                             &nbsp;|&nbsp; <b>Already gone:</b> {state.goneCount}
                             &nbsp;|&nbsp; <b>Skipped:</b> {state.skipCount}

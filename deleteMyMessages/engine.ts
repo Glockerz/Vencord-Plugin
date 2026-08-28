@@ -82,8 +82,6 @@ export interface DeleteFilters {
     maxId?: string;
     /** safety cap - stop after deleting this many messages (0 = unlimited) */
     maxDeletions: number;
-    /** if true, never actually deletes - only counts what would happen */
-    dryRun: boolean;
 }
 
 export interface DeleteTuning {
@@ -455,7 +453,7 @@ export class DeleteJob {
 
         // A job that deleted something always runs one more full scan to prove
         // nothing is left - that scan costs the empty-page backoff sequence.
-        if (!this.filters.dryRun && this.state.pass < this.tuning.maxSweeps) {
+        if (this.state.pass < this.tuning.maxSweeps) {
             etr += VERIFICATION_SCAN_MS;
         }
 
@@ -514,7 +512,6 @@ export class DeleteJob {
                 }
 
                 // Scan finished cleanly (search ran out of results).
-                if (this.filters.dryRun) break;
                 if (outcome.deleted === 0) break;
                 if (this.state.pass >= this.tuning.maxSweeps) {
                     this.log(
@@ -531,7 +528,7 @@ export class DeleteJob {
                 this.emit();
             }
 
-            if (!this.state.stopRequested && !this.filters.dryRun && this.failedMessages.length > 0) {
+            if (!this.state.stopRequested && this.failedMessages.length > 0) {
                 await this.retryFailedMessages();
             }
 
@@ -545,7 +542,7 @@ export class DeleteJob {
         this.stats.endTime = Date.now();
         this.log(
             "success",
-            `${this.filters.dryRun ? "Dry run" : "Run"} finished: ${this.state.delCount} deleted, ${this.state.failCount} failed, ${this.state.goneCount} already gone, ${this.state.filteredCount} filtered out.`
+            `Run finished: ${this.state.delCount} deleted, ${this.state.failCount} failed, ${this.state.goneCount} already gone, ${this.state.filteredCount} filtered out.`
         );
         this.onStop?.(this.state, this.stats, reason);
     }
@@ -561,7 +558,7 @@ export class DeleteJob {
 
         this.log(
             "info",
-            `Scan ${this.state.pass}: searching for your messages${this.filters.dryRun ? " (dry run)" : ""}...`
+            `Scan ${this.state.pass}: searching for your messages...`
         );
         this.emit();
 
@@ -618,17 +615,10 @@ export class DeleteJob {
                     };
                 }
 
-                if (this.filters.dryRun) {
-                    for (const m of toDelete) this.processedIds.add(m.id);
-                    this.state.delCount += toDelete.length;
-                    deletedThisPass += toDelete.length;
-                    this.log("info", `Dry run: ${toDelete.length} message(s) on this page would be deleted.`);
-                } else {
-                    const result = await this.deleteMessagesFromList(toDelete);
-                    deletedThisPass += result.deleted;
-                    if (result.abortReason) {
-                        return { kind: "aborted", deleted: deletedThisPass, reason: result.abortReason };
-                    }
+                const result = await this.deleteMessagesFromList(toDelete);
+                deletedThisPass += result.deleted;
+                if (result.abortReason) {
+                    return { kind: "aborted", deleted: deletedThisPass, reason: result.abortReason };
                 }
 
                 this.emit();

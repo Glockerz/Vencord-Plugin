@@ -24,11 +24,11 @@ itself performs requests.
   (search index not ready yet) responses. Like `undiscord-core.js`, the
   delay is permanently raised after being throttled so the tool adapts to
   Discord's current rate limits instead of hammering the API.
-- **Visible Stop button** to abort a running job at any time (closing the
-  window stops the job too — it can never keep deleting with no UI).
-- **Dry run mode**, enabled by default, to preview counts before anything
-  actually happens.
-- **A configurable "max messages to delete" cap** for extra peace of mind.
+- **Visible Stop button** to abort a running job at any time. Closing the
+  window does *not* stop it (that's the point) — the chat-box button is always
+  there to reopen it, and turning the plugin off stops any running job.
+- **A configurable "max messages to delete" cap.** This is how you test: set
+  it to 5, watch what happens, then raise it.
 
 ## Runs in the background
 
@@ -129,6 +129,9 @@ subtitle, in a red box on the start and confirm screens, in the slash-command
 reply, and in the plugin description — deliberately, every time, because the
 downside is your account and not a re-run.
 
+There is no dry run: what you confirm is what gets deleted. The safety net is
+the confirmation preview plus the max-messages cap, so start small.
+
 ## Installation (userplugin)
 
 1. Set up a [Vencord development build](https://vencord.dev/installing/)
@@ -153,8 +156,9 @@ plugin.
 - Run the `/deletemymessages` slash command in any channel or DM, **or**
   right-click a channel/DM in the channel list and choose
   **"Delete My Messages..."**.
-- Configure your filters and scope, review the dry-run preview, then
-  confirm to actually delete.
+- Configure your filters and scope, then confirm. The confirmation screen
+  shows a preview of the messages on the first page before anything is
+  deleted — set **Max messages to delete** to a small number for a first run.
 - Click **Stop** at any time to abort a running job.
 
 ## Development
@@ -175,5 +179,6 @@ npm run check     # both
 
 Bulk message deletion through client automation is against Discord's Terms
 of Service and, like Undiscord itself, this plugin is provided for personal
-convenience with no warranty. Deleted messages cannot be recovered. Use
-generous delays and test with dry-run first.
+convenience with no warranty. Deleted messages cannot be recovered, and
+accounts have been terminated for self-botting. Use generous delays and start
+with a small "max messages to delete" cap.

@@ -21,7 +21,6 @@
  *    index not ready yet) responses, permanently raising the delay after
  *    being throttled - exactly like undiscord-core.js does.
  *  - A visible Stop button to abort a running job at any time.
- *  - "Dry run" mode on by default so you can preview what would be deleted.
  *  - A hard "max messages to delete" cap you can set for extra safety.
  *
  * On top of Undiscord:
@@ -107,7 +106,7 @@ export default definePlugin({
                 openForChannel(ctx.channel.id);
                 sendBotMessage(ctx.channel.id, {
                     content:
-                        "Opened the Delete My Messages tool. Configure your filters, review the dry run, then confirm. " +
+                        "Opened the Delete My Messages tool. Configure your filters, review the preview, then confirm. " +
                         "**Heads up:** automating your account is self-botting, which breaks Discord's ToS and can get your account banned. " +
                         "The job keeps running in the background - reopen it with the trash icon next to the chat box.",
                 });

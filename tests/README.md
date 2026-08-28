@@ -24,7 +24,8 @@ so no bundler or build step is involved).
 | `fakeDiscord.ts` | A fake Discord API: `/messages/search` (paging, `min_id`/`max_id`, sort order, content filter, conversation grouping with context messages) and `DELETE /channels/:id/messages/:id`. Can simulate a **lagging search index**, a wrong `total_results`, `429`/`202` responses, missing `hit` flags, and an ignored `author_id` filter. |
 | `webpackCommonMock.ts` | Stands in for Vencord's `@webpack/common`; forwards `RestAPI.get/del` and `UserStore.getCurrentUser` to whichever `FakeDiscord` the test installed. |
 | `aliasLoader.mjs` / `register.mjs` | Node module-resolution hooks that map `@webpack/common` to the mock, so the unmodified plugin source can be imported directly. |
-| `engine.test.ts` | The tests. |
+| `engine.test.ts` | Engine tests. |
+| `manager.test.ts` | Background job manager tests (job survives having no UI attached, parked confirmation, external stop, ETA). |
 | `types/vencord-modules.d.ts` | Ambient stubs for `@webpack/common`, `@api/*`, `@utils/*`, `@components/*` so `npm run typecheck` works without a Vencord checkout. |
 
 The engine's waits are injectable (`DeleteJob`'s third constructor argument),
@@ -45,7 +46,7 @@ real `RestAPI` call path, is the shipped code.
 - **Paging** — every search is scoped to your own id and pages forward with a
   monotonically increasing cursor instead of an offset.
 - **Filters & caps** — pinned/type/regex/content filters, `min_id`/`max_id`,
-  the max-deletions cap, and dry run.
+  and the max-deletions cap.
 - **Failure handling** — `429` on search and delete, `202` not-indexed,
   messages that are already gone, stopping mid-run, and cancelling the
   confirmation dialog.
