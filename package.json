@@ -1,0 +1,21 @@
+{
+    "name": "vencord-plugin-delete-my-messages",
+    "version": "1.0.0",
+    "private": true,
+    "type": "module",
+    "description": "DeleteMyMessages - a Vencord userplugin that bulk-deletes your own Discord messages (Undiscord-style).",
+    "scripts": {
+        "test": "node --import ./tests/register.mjs --test tests/engine.test.ts",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "check": "npm run typecheck && npm test"
+    },
+    "engines": {
+        "node": ">=22.18.0"
+    },
+    "devDependencies": {
+        "@types/node": "^26.4.0",
+        "@types/react": "^19.2.18",
+        "@vencord/discord-types": "^1.0.2",
+        "typescript": "^7.0.2"
+    }
+}
