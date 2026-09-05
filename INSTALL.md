@@ -303,6 +303,32 @@ Vencord.Plugins.plugins["DeleteMyMessages"]
 
 ## Troubleshooting
 
+**Vesktop's own "Update" button fails with `Portal call failed:
+org.freedesktop.DBus.Error.ServiceUnknown` / "`flatpak-spawn --host` only works
+when the Flatpak is allowed to talk to `org.freedesktop.Flatpak`"**
+Vesktop is sandboxed, so its updater tries to run `flatpak` on the host through
+`flatpak-spawn --host` — and that call needs the `org.freedesktop.Flatpak`
+session-bus permission, which the Flatpak build does not ship with. Update it
+from outside the sandbox instead, which needs no permission change at all:
+```sh
+flatpak update dev.vencord.Vesktop     # Flatpak install
+paru -S vesktop                        # ...or pacman/AUR install
+```
+If you want the in-app button to work anyway, grant the permission (Flatseal →
+Session Bus → Talks → add `org.freedesktop.Flatpak`, or):
+```sh
+flatpak override --user --talk-name=org.freedesktop.Flatpak dev.vencord.Vesktop
+flatpak kill dev.vencord.Vesktop
+```
+Be aware that this permission lets the app run arbitrary commands on your
+system - it is exactly what `flatpak-spawn --host` is for. Updating from the
+terminal avoids granting it.
+
+Whichever way you update: afterwards check that `dist/package.json` still
+exists (see the [Vesktop workaround](#vesktop-recommended-easiest) above), and
+remember the app updating does **not** update your custom Vencord build - run
+`vupdate` for that.
+
 **`ERR_PNPM_UNUSED_PATCH` when running `pnpm install`/`pnpm build`**
 Usually caused by a pnpm-managed Node.js runtime getting mixed up with your
 system Node (this can happen if you ever ran `pnpm env use`, which manages
