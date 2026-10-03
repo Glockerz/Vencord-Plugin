@@ -26,22 +26,25 @@ declare module "@webpack/common" {
 
     export const ChannelStore: {
         getChannel(id: string): any;
+        getDMFromUserId(userId: string): string | undefined;
     };
     export const GuildStore: {
         getGuild(id: string): any;
     };
     export const UserStore: {
         getCurrentUser(): { id: string; username: string; };
+        getUser(id: string): { id: string; username: string; } | undefined;
     };
+    /**
+     * Current Vencord: only show/pop, and toast types are plain strings passed
+     * to showToast. (Older builds had a `Toasts.Type` object with numeric
+     * values; the plugin adapts to whichever exists - see deleteMyMessages/toasts.ts.)
+     */
     export const Toasts: {
-        Type: Record<string, string>;
-        Position: Record<string, number>;
-        genId(): string;
         show(data: any): void;
         pop(): void;
-        create(message: string, type: string, options?: any): any;
     };
-    export function showToast(message: string, type?: string, options?: any): void;
+    export function showToast(message: string, type?: string | number, options?: any): void;
 
     export const RestAPI: {
         get(opts: { url: string; }): Promise<any>;
