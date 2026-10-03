@@ -23,6 +23,7 @@ import {
     Modal,
     TextInput,
     useEffect,
+    UserStore,
     useState,
 } from "@webpack/common";
 
@@ -85,6 +86,25 @@ function snippet(message: SearchMessage) {
     const text = content.length > PREVIEW_SNIPPET ? content.slice(0, PREVIEW_SNIPPET) + "..." : content;
     if (!text) return hasAttachment ? "[attachment]" : "[empty message]";
     return hasAttachment ? `${text} [attachment]` : text;
+}
+
+/**
+ * How to name the deletion target. A job started from the DM list is about a
+ * *private* channel, which has no name of its own - showing its channel id
+ * there would look broken, so DMs are named after the recipient.
+ */
+function channelLabel(channel: any, channelId: string): string {
+    if (!channel) return channelId;
+    // server channels are the easy case
+    if (channel.guild_id) return `#${channel.name ?? channelId}`;
+
+    const recipientId = typeof channel.getRecipientId === "function"
+        ? channel.getRecipientId()
+        : channel.recipients?.[0];
+    const recipient = recipientId ? UserStore.getUser(recipientId) : undefined;
+
+    // group DMs do have a (computed) name; a DM does not
+    return recipient?.username ? `@${recipient.username}` : channel.name ?? channelId;
 }
 
 function LogBox({ state }: { state: JobState; }) {
@@ -216,7 +236,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
 
     const preview = state?.messagesToDelete.slice(0, PREVIEW_COUNT) ?? [];
     const originChannel = entry ? ChannelStore.getChannel(entry.originChannelId) : undefined;
-    const originName = (originChannel as any)?.name ?? entry?.originChannelId ?? initialChannelId;
+    const originName = channelLabel(originChannel, entry?.originChannelId ?? initialChannelId);
 
     const actions = isConfigPhase
         ? [
@@ -260,7 +280,8 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                     <Row>
                         <Label>Where</Label>
                         <Forms.FormText>
-                            Channel: <b>#{(channel as any).name ?? initialChannelId}</b>
+                            {guildId === "@me" ? "DM: " : "Channel: "}
+                            <b>{channelLabel(channel, initialChannelId)}</b>
                             {guildName && <> in <b>{guildName}</b></>}
                         </Forms.FormText>
                         {guildId !== "@me" && (
@@ -458,7 +479,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                         )}
                         <Forms.FormText style={{ color: "var(--text-muted)" }}>
                             Scan {state.pass} of up to {settings.store.maxScans} · {state.pages} search page(s) ·{" "}
-                            {state.scannedCount} search hit(s) inspected · target #{originName}
+                            {state.scannedCount} search hit(s) inspected · target {originName}
                         </Forms.FormText>
                         {state.grandTotal > 0 && (
                             <Forms.FormText style={{ color: "var(--text-muted)" }}>

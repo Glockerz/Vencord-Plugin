@@ -12,9 +12,8 @@
  * deleting - the modal is only ever a view onto whatever is running.
  */
 
-import { showToast, Toasts } from "@webpack/common";
-
 import { DeleteJob, type DeleteFilters, type DeleteTuning, type Deps, type JobState, type JobStats } from "./engine";
+import { showJobToast } from "./toasts";
 
 export interface ManagedJob {
     id: string;
@@ -105,7 +104,7 @@ class JobManager {
                 this.confirmResolve = resolve;
             });
             this.emit();
-            showToast("DeleteMyMessages is waiting for you to confirm the deletion", Toasts.Type.MESSAGE);
+            showJobToast("DeleteMyMessages is waiting for you to confirm the deletion");
             return answer;
         };
 
@@ -119,9 +118,9 @@ class JobManager {
             this.emit();
 
             const seconds = Math.round(job.elapsedMs() / 1000);
-            showToast(
+            showJobToast(
                 `DeleteMyMessages: ${state.delCount} deleted in ${seconds}s - ${reason}`,
-                state.failCount > 0 ? Toasts.Type.FAILURE : Toasts.Type.SUCCESS
+                state.failCount > 0 ? "failure" : "success"
             );
         };
 
