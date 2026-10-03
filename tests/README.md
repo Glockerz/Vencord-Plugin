@@ -26,6 +26,8 @@ so no bundler or build step is involved).
 | `aliasLoader.mjs` / `register.mjs` | Node module-resolution hooks that map `@webpack/common` to the mock, so the unmodified plugin source can be imported directly. |
 | `engine.test.ts` | Engine tests. |
 | `manager.test.ts` | Background job manager tests (job survives having no UI attached, parked confirmation, external stop, ETA). |
+| `resolveDm.test.ts` | Context menu targeting: which private channel a `user-context` menu refers to, and why a server member's menu must not get the entry. |
+| `toasts.test.ts` | The toast helper, against both a current Vencord build (no `Toasts.Type`) and an older one — this is the regression test for the "Cannot read properties of undefined (reading 'MESSAGE')" crash. |
 | `types/vencord-modules.d.ts` | Ambient stubs for `@webpack/common`, `@api/*`, `@utils/*`, `@components/*` so `npm run typecheck` works without a Vencord checkout. |
 
 The engine's waits are injectable (`DeleteJob`'s third constructor argument),
@@ -50,3 +52,11 @@ real `RestAPI` call path, is the shipped code.
 - **Failure handling** — `429` on search and delete, `202` not-indexed,
   messages that are already gone, stopping mid-run, and cancelling the
   confirmation dialog.
+- **Context menu targeting** — the DM-list entry resolves to the private
+  channel the menu was opened on (including group DMs and channel objects that
+  only expose the store helpers), while server channels, member lists with a
+  `guildId`, unknown channel objects and missing/throwing store lookups all
+  produce no entry at all.
+- **Vencord API drift** — toast types are resolved at call time, so the plugin
+  works on builds with `Toasts.Type` (numeric) and on current builds without it
+  (string types), including the falsy `MESSAGE: 0` case.

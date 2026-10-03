@@ -37,17 +37,17 @@ export const GuildStore = {
 };
 
 /** toasts shown by the plugin, so tests can assert on them */
-export const toastLog: { message: string; type?: string; }[] = [];
+export const toastLog: { message: string; type?: string | number; }[] = [];
 
+/**
+ * Mirrors what current Vencord builds actually export: `Toasts` has no `Type`
+ * on purpose - the plugin has to cope without it (see deleteMyMessages/toasts.ts).
+ */
 export const Toasts = {
-    Type: { SUCCESS: "success", FAILURE: "failure", MESSAGE: "message" },
-    Position: { BOTTOM: 0 },
-    genId: () => Math.random().toString(36).slice(2),
     show: (data: any) => toastLog.push(data),
     pop: () => { },
-    create: (message: string, type: string) => ({ message, type }),
 };
 
-export function showToast(message: string, type?: string) {
+export function showToast(message: string, type?: string | number) {
     toastLog.push({ message, type });
 }
