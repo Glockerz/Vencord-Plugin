@@ -31,7 +31,8 @@ export const settings = definePluginSettings({
     },
     addContextMenuEntry: {
         type: OptionType.BOOLEAN,
-        description: "Add a \"Delete My Messages...\" option to channel/DM right-click context menus.",
+        description:
+            "Add a \"Purge Messages\" option to right-click menus: channels, group DMs, and people in your DM list.",
         default: true,
     },
 });

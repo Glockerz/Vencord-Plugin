@@ -102,6 +102,11 @@ Everything in the UI is counted from messages the tool actually inspected:
 
 - Delete messages in the current channel/DM, or search an entire server
   (subject to Discord's message search index).
+- Reachable without opening anything first: right-click a channel, a group DM,
+  or a person in the DM list. The DM list entry points straight at that DM —
+  the channel list, the server list and the friends list all stay untouched by
+  anything you did not ask for, and the entry never appears on a *server*
+  member's menu, where it would open the wrong conversation.
 - Filters: content substring, case-insensitive regex, has-link, has-file,
   include/exclude pinned messages, and before/after message ID or date.
 - Live progress: verified counts, current scan, pages fetched, rate-limit
@@ -116,7 +121,7 @@ Everything in the UI is counted from messages the tool actually inspected:
 | `deleteDelay` | 1200ms | delay between deletions (300ms floor) |
 | `maxAttempts` | 3 | delete attempts per message |
 | `maxScans` | 5 | full oldest→newest scans; a scan that deletes nothing ends the job |
-| `addContextMenuEntry` | on | adds "Delete My Messages…" to channel/DM menus |
+| `addContextMenuEntry` | on | adds "Purge Messages" to channel / group DM / DM list menus |
 
 Search/delete delays are defaults only — the start dialog lets you override
 them per job.
@@ -154,8 +159,11 @@ plugin.
 ## Usage
 
 - Run the `/deletemymessages` slash command in any channel or DM, **or**
-  right-click a channel/DM in the channel list and choose
-  **"Delete My Messages..."**.
+  right-click a channel/DM in the channel list and choose **"Purge Messages"**,
+  **or** right-click a person in the **DM list** (the menu with *Mark As Read* /
+  *Close DM*) and choose the same entry — you do not have to open the DM first.
+  The menu entry opens the **Delete My Messages** window; the name in the menu
+  is kept short on purpose.
 - Configure your filters and scope, then confirm. The confirmation screen
   shows a preview of the messages on the first page before anything is
   deleted — set **Max messages to delete** to a small number for a first run.

@@ -31,6 +31,9 @@
  *    your messages is gone even when Discord's search index lags.
  *  - Counts come from messages actually inspected, not from Discord's
  *    unreliable total_results estimate.
+ *  - Reachable from the right-click menus: channels and group DMs (channel
+ *    context menus) and people in the DM list (the user context menu, which is
+ *    a different menu - see ./resolveDm.ts), plus /deletemymessages anywhere.
  *
  * This never reads or transmits your Discord auth token - all requests go
  * through Vencord's own authenticated RestAPI, the same way Discord's client
@@ -44,15 +47,34 @@
 import { ApplicationCommandInputType, sendBotMessage } from "@api/Commands";
 import { addContextMenuPatch, findGroupChildrenByChildId, NavContextMenuPatchCallback, removeContextMenuPatch } from "@api/ContextMenu";
 import definePlugin from "@utils/types";
-import { Menu } from "@webpack/common";
+import { ChannelStore, Menu } from "@webpack/common";
 
 import { registerChatBarButton, unregisterChatBarButton } from "./ChatBarButton";
 import { openDeleteMyMessagesModal } from "./DeleteMyMessagesModal";
 import { jobManager } from "./manager";
+import { resolveDmChannelId } from "./resolveDm";
 import { settings } from "./settings";
+
+const CHANNEL_MENU_IDS: string[] = ["channel-context", "gdm-context"];
+/** the menu you get when you right-click a person in the DM list */
+const USER_MENU_IDS: string[] = ["user-context"];
 
 function openForChannel(channelId: string) {
     openDeleteMyMessagesModal(channelId);
+}
+
+/** keep it short - long menu labels get truncated by Discord */
+const MENU_LABEL = "Purge Messages";
+
+function deleteMyMessagesItem(id: string, channelId: string) {
+    return (
+        <Menu.MenuItem
+            id={id}
+            label={MENU_LABEL}
+            color="danger"
+            action={() => openForChannel(channelId)}
+        />
+    );
 }
 
 const ChannelContextMenuPatch: NavContextMenuPatchCallback = (children, { channel }) => {
@@ -62,14 +84,39 @@ const ChannelContextMenuPatch: NavContextMenuPatchCallback = (children, { channe
         ?? findGroupChildrenByChildId("close-dm", children)
         ?? children;
 
-    group.push(
-        <Menu.MenuItem
-            id="delete-my-messages"
-            label="Delete My Messages..."
-            color="danger"
-            action={() => openForChannel(channel.id)}
-        />
-    );
+    group.push(deleteMyMessagesItem("delete-my-messages", channel.id));
+};
+
+/**
+ * The DM list's right-click menu (the one with "Mark As Read" / "Close DM")
+ * is Discord's *user* context menu, not the channel one - that is why the
+ * entry has to be patched in separately here.
+ *
+ * The same menu is used for users in other contexts (a member in a server, a
+ * message author, ...), so the DM is resolved first and the entry is only
+ * added when the menu really is about a private channel (see ./resolveDm.ts).
+ */
+const UserContextMenuPatch: NavContextMenuPatchCallback = (children, props) => {
+    if (!settings.store.addContextMenuEntry) return;
+
+    const channelId = resolveDmChannelId(props, {
+        getDMFromUserId: userId => ChannelStore.getDMFromUserId(userId),
+    });
+    if (!channelId) return;
+
+    const entry = deleteMyMessagesItem("delete-my-messages-dm", channelId);
+
+    // sit next to Discord's own DM actions ("Mark As Read" / "Close DM"), with
+    // a separator so the destructive entry is not mistaken for one of them
+    const dmGroup = findGroupChildrenByChildId("close-dm", children)
+        ?? findGroupChildrenByChildId("mark-channel-read", children);
+
+    if (dmGroup) {
+        const closeDm = dmGroup.findIndex(child => child?.props?.id === "close-dm");
+        dmGroup.splice(closeDm === -1 ? dmGroup.length : closeDm + 1, 0, <Menu.MenuSeparator />, entry);
+    } else {
+        children.push(<Menu.MenuGroup>{entry}</Menu.MenuGroup>);
+    }
 };
 
 export default definePlugin({
@@ -86,12 +133,14 @@ export default definePlugin({
     dependencies: ["CommandsAPI"],
 
     start() {
-        addContextMenuPatch(["channel-context", "gdm-context"], ChannelContextMenuPatch);
+        addContextMenuPatch(CHANNEL_MENU_IDS, ChannelContextMenuPatch);
+        addContextMenuPatch(USER_MENU_IDS, UserContextMenuPatch);
         registerChatBarButton();
     },
 
     stop() {
-        removeContextMenuPatch(["channel-context", "gdm-context"], ChannelContextMenuPatch);
+        removeContextMenuPatch(CHANNEL_MENU_IDS, ChannelContextMenuPatch);
+        removeContextMenuPatch(USER_MENU_IDS, UserContextMenuPatch);
         unregisterChatBarButton();
         // never leave a job deleting with the plugin turned off
         if (jobManager.isRunning) jobManager.stop("Stopped because the plugin was disabled.");
