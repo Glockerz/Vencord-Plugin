@@ -11,14 +11,15 @@
  * window (or switching to another channel) leaves it running.
  */
 
+import { Button } from "@components/Button";
 import { FormSwitch } from "@components/FormSwitch";
+import { Heading } from "@components/Heading";
+import { Paragraph } from "@components/Paragraph";
 import { openModal } from "@utils/modal";
 import { RenderModalProps } from "@vencord/discord-types";
 import type { ReactNode } from "react";
 import {
-    Button,
     ChannelStore,
-    Forms,
     GuildStore,
     Modal,
     TextInput,
@@ -44,9 +45,9 @@ function Row({ children }: { children: ReactNode; }) {
 
 function Label({ children }: { children: ReactNode; }) {
     return (
-        <Forms.FormTitle tag="h5" style={{ marginBottom: 4 }}>
+        <Heading tag="h5" style={{ marginBottom: 4 }}>
             {children}
-        </Forms.FormTitle>
+        </Heading>
     );
 }
 
@@ -61,19 +62,19 @@ function Warning({ children }: { children?: ReactNode; }) {
                 background: "var(--background-secondary)",
             }}
         >
-            <Forms.FormTitle tag="h5" style={{ color: "var(--text-danger)", marginBottom: 4 }}>
+            <Heading tag="h5" style={{ color: "var(--text-danger)", marginBottom: 4 }}>
                 Read this before you start
-            </Forms.FormTitle>
-            <Forms.FormText style={{ fontSize: 13 }}>
+            </Heading>
+            <Paragraph style={{ fontSize: 13 }}>
                 This automates your account, which Discord calls <b>self-botting</b> and forbids in its
                 Terms of Service. Accounts have been <b>terminated</b> for it. Deleted messages
                 cannot be recovered.
-            </Forms.FormText>
-            <Forms.FormText style={{ fontSize: 13, marginTop: 6 }}>
+            </Paragraph>
+            <Paragraph style={{ fontSize: 13, marginTop: 6 }}>
                 If you go ahead: keep the delays high, start with a small <b>Max messages to
                 delete</b> cap to test on a handful of messages, and stop immediately if Discord
                 starts rate-limiting you.
-            </Forms.FormText>
+            </Paragraph>
             {children}
         </div>
     );
@@ -163,9 +164,9 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
     if (!channel) {
         return (
             <Modal {...modalProps} title="Delete My Messages">
-                <Forms.FormText style={{ margin: "16px 0" }}>
+                <Paragraph style={{ margin: "16px 0" }}>
                     Could not resolve the current channel.
-                </Forms.FormText>
+                </Paragraph>
             </Modal>
         );
     }
@@ -259,22 +260,22 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
 
                     <Row>
                         <Label>Where</Label>
-                        <Forms.FormText>
+                        <Paragraph>
                             Channel: <b>#{(channel as any).name ?? initialChannelId}</b>
                             {guildName && <> in <b>{guildName}</b></>}
-                        </Forms.FormText>
+                        </Paragraph>
                         {guildId !== "@me" && (
                             <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                                 <Button
-                                    size={Button.Sizes.SMALL}
-                                    color={scope === "channel" ? Button.Colors.BRAND : Button.Colors.TRANSPARENT}
+                                    size="small"
+                                    variant={scope === "channel" ? "primary" : "secondary"}
                                     onClick={() => setScope("channel")}
                                 >
                                     This channel only
                                 </Button>
                                 <Button
-                                    size={Button.Sizes.SMALL}
-                                    color={scope === "guild" ? Button.Colors.BRAND : Button.Colors.TRANSPARENT}
+                                    size="small"
+                                    variant={scope === "guild" ? "primary" : "secondary"}
                                     onClick={() => setScope("guild")}
                                 >
                                     Whole server
@@ -287,7 +288,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                         <Label>Speed</Label>
                         <div style={{ display: "flex", gap: 12 }}>
                             <div style={{ flex: 1 }}>
-                                <Forms.FormText style={{ fontSize: 12 }}>Search delay (ms, min 400)</Forms.FormText>
+                                <Paragraph style={{ fontSize: 12 }}>Search delay (ms, min 400)</Paragraph>
                                 <TextInput
                                     value={searchDelay}
                                     onChange={(v: string) => setSearchDelay(v.replace(/[^0-9]/g, ""))}
@@ -295,7 +296,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                                 />
                             </div>
                             <div style={{ flex: 1 }}>
-                                <Forms.FormText style={{ fontSize: 12 }}>Delete delay (ms, min 300)</Forms.FormText>
+                                <Paragraph style={{ fontSize: 12 }}>Delete delay (ms, min 300)</Paragraph>
                                 <TextInput
                                     value={deleteDelay}
                                     onChange={(v: string) => setDeleteDelay(v.replace(/[^0-9]/g, ""))}
@@ -303,10 +304,10 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                                 />
                             </div>
                         </div>
-                        <Forms.FormText style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                        <Paragraph style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                             Lower is faster and more likely to get your account flagged. Defaults come from
                             Settings → Vencord → Plugins → DeleteMyMessages.
-                        </Forms.FormText>
+                        </Paragraph>
                     </Row>
 
                     <Row>
@@ -355,7 +356,7 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                     </Row>
 
                     {error && (
-                        <Forms.FormText style={{ color: "var(--text-danger)" }}>{error}</Forms.FormText>
+                        <Paragraph style={{ color: "var(--text-danger)" }}>{error}</Paragraph>
                     )}
                 </>
             )}
@@ -364,22 +365,22 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
                 <>
                     <Warning />
                     <Row>
-                        <Forms.FormTitle tag="h4">Confirm deletion</Forms.FormTitle>
-                        <Forms.FormText>
+                        <Heading tag="h4">Confirm deletion</Heading>
+                        <Paragraph>
                             This first page holds <b>{state.messagesToDelete.length}</b> of <b>your</b> messages that
                             match your filters. The tool then keeps scanning oldest → newest and deletes{" "}
                             <b>every message of yours</b> that matches, so this is not the final number.
-                        </Forms.FormText>
+                        </Paragraph>
                         {state.notMineCount > 0 && (
-                            <Forms.FormText style={{ marginTop: 4 }}>
+                            <Paragraph style={{ marginTop: 4 }}>
                                 {state.notMineCount} message(s) from <b>other people</b> turned up in the search
                                 results. They are counted separately and will never be deleted.
-                            </Forms.FormText>
+                            </Paragraph>
                         )}
-                        <Forms.FormText style={{ marginTop: 8 }}>
+                        <Paragraph style={{ marginTop: 8 }}>
                             This will PERMANENTLY delete these messages, in the background, until
                             you press Stop. Nothing can be recovered.
-                        </Forms.FormText>
+                        </Paragraph>
                     </Row>
 
                     {preview.length > 0 && (
@@ -413,64 +414,64 @@ export function DeleteMyMessagesModal({ initialChannelId, modalProps }: Props) {
             {(isRunningPhase || isDonePhase) && state && stats && entry && (
                 <>
                     <Row>
-                        <Forms.FormTitle tag="h4">
+                        <Heading tag="h4">
                             {isDonePhase ? "Finished" : "Running in the background..."}
-                        </Forms.FormTitle>
+                        </Heading>
 
                         {isRunningPhase && (
-                            <Forms.FormText style={{ color: "var(--text-muted)" }}>
+                            <Paragraph style={{ color: "var(--text-muted)" }}>
                                 You can close this window, switch channel or server - it keeps going. Reopen it
                                 from the trash icon next to the chat box, or with /deletemymessages.
-                            </Forms.FormText>
+                            </Paragraph>
                         )}
 
-                        <Forms.FormText>
+                        <Paragraph>
                             <b>Time running:</b> {msToHMS(entry.job.elapsedMs())}
                             {isDonePhase && <>&nbsp;(total)</>}
                             &nbsp;|&nbsp; <b>Speed:</b> {entry.job.messagesPerMinute().toFixed(1)} msg/min
-                        </Forms.FormText>
-                        <Forms.FormText>
+                        </Paragraph>
+                        <Paragraph>
                             <b>Your messages found:</b> {state.mineCount}
                             {state.notMineCount > 0 && (
                                 <> &nbsp;(plus {state.notMineCount} from other people, ignored)</>
                             )}
-                        </Forms.FormText>
-                        <Forms.FormText>
+                        </Paragraph>
+                        <Paragraph>
                             <b>Matching your filters:</b> {state.queuedCount}
                             {state.filteredCount > 0 && (
                                 <> &nbsp;({state.filteredCount} of yours skipped by pinned/type/regex filters)</>
                             )}
-                        </Forms.FormText>
-                        <Forms.FormText>
+                        </Paragraph>
+                        <Paragraph>
                             <b>Deleted:</b> {state.delCount}
                             &nbsp;|&nbsp; <b>Failed:</b> {state.failCount}
                             &nbsp;|&nbsp; <b>Already gone:</b> {state.goneCount}
                             &nbsp;|&nbsp; <b>Skipped:</b> {state.skipCount}
-                        </Forms.FormText>
+                        </Paragraph>
                         {isRunningPhase && (
-                            <Forms.FormText>
+                            <Paragraph>
                                 <b>Time remaining:</b> ~{msToHMS(stats.etrMs)}
                                 <span style={{ color: "var(--text-muted)" }}>
                                     {" "}(estimate - about {stats.remainingEstimate} message(s) left; Discord's
                                     search count is approximate, so treat this as a rough guide)
                                 </span>
-                            </Forms.FormText>
+                            </Paragraph>
                         )}
-                        <Forms.FormText style={{ color: "var(--text-muted)" }}>
+                        <Paragraph style={{ color: "var(--text-muted)" }}>
                             Scan {state.pass} of up to {settings.store.maxScans} · {state.pages} search page(s) ·{" "}
                             {state.scannedCount} search hit(s) inspected · target #{originName}
-                        </Forms.FormText>
+                        </Paragraph>
                         {state.grandTotal > 0 && (
-                            <Forms.FormText style={{ color: "var(--text-muted)" }}>
+                            <Paragraph style={{ color: "var(--text-muted)" }}>
                                 Discord's own estimate for the query was ~{state.grandTotal} - used only for the
                                 time estimate above, never to decide when to stop.
-                            </Forms.FormText>
+                            </Paragraph>
                         )}
-                        <Forms.FormText>
+                        <Paragraph>
                             Rate-limited {stats.throttledCount} time(s), total wait {msToHMS(stats.throttledTotalTime)}
-                        </Forms.FormText>
+                        </Paragraph>
                         {isDonePhase && entry.reason && (
-                            <Forms.FormText style={{ marginTop: 8 }}>{entry.reason}</Forms.FormText>
+                            <Paragraph style={{ marginTop: 8 }}>{entry.reason}</Paragraph>
                         )}
                     </Row>
 

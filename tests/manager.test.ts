@@ -81,7 +81,7 @@ test("a job keeps running and finishing with no UI attached", async t => {
     assert.ok(entry.job.elapsedMs() >= 0, "elapsed time must be reported");
 
     assert.ok(
-        toastLog.some(toast => /40 deleted/.test(toast.message)),
+        toastLog.some(toast => /40 deleted/.test(toast.text)),
         `expected a completion toast, got: ${JSON.stringify(toastLog)}`
     );
 
@@ -120,7 +120,7 @@ test("the job waits for confirmation and can be answered later", async t => {
     assert.equal(fake.deleteCount, 0, "nothing may be deleted before you confirm");
     assert.ok(entry.state.messagesToDelete.length > 0, "the preview should be available");
     assert.ok(
-        toastLog.some(toast => /waiting for you to confirm/i.test(toast.message)),
+        toastLog.some(toast => /waiting for you to confirm/i.test(toast.text)),
         `expected a "waiting for confirmation" toast, got: ${JSON.stringify(toastLog)}`
     );
 

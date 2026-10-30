@@ -19,9 +19,7 @@ declare module "@webpack/common" {
     export const useCallback: typeof import("react").useCallback;
 
     export const Modal: ModalComponent;
-    export const Button: ComponentType<any> & { Sizes: Record<string, any>; Colors: Record<string, any>; };
     export const TextInput: ComponentType<any>;
-    export const Forms: Record<string, any>;
     export const Menu: Record<string, any>;
 
     export const ChannelStore: {
@@ -33,15 +31,7 @@ declare module "@webpack/common" {
     export const UserStore: {
         getCurrentUser(): { id: string; username: string; };
     };
-    export const Toasts: {
-        Type: Record<string, string>;
-        Position: Record<string, number>;
-        genId(): string;
-        show(data: any): void;
-        pop(): void;
-        create(message: string, type: string, options?: any): any;
-    };
-    export function showToast(message: string, type?: string, options?: any): void;
+    export function showToast(data: { text: string; variant?: "default" | "success" | "critical"; duration?: number; }): void;
 
     export const RestAPI: {
         get(opts: { url: string; }): Promise<any>;
@@ -50,6 +40,18 @@ declare module "@webpack/common" {
         patch(opts: { url: string; body?: any; }): Promise<any>;
         del(opts: { url: string; }): Promise<any>;
     };
+}
+
+declare module "@components/Button" {
+    export const Button: ComponentType<{ variant?: string; size?: string; } & Record<string, any>>;
+}
+
+declare module "@components/Heading" {
+    export const Heading: ComponentType<{ tag?: string; } & Record<string, any>>;
+}
+
+declare module "@components/Paragraph" {
+    export const Paragraph: ComponentType<Record<string, any>>;
 }
 
 declare module "@components/FormSwitch" {

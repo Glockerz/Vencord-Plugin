@@ -180,6 +180,8 @@ export interface Deps {
 // Helpers (ported from undiscord/src/utils/helpers.js)
 // ---------------------------------------------------------------------------
 
+const DISCORD_EPOCH = 1420070400000;
+
 export const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 export function msToHMS(ms: number) {
@@ -197,10 +199,11 @@ export function redact(str: unknown) {
 
 /** Turns a message id OR an ISO date string into a discord snowflake */
 export function toSnowflake(value: string): string {
-    if (/^\d+$/.test(value)) return value; // already a snowflake
-    const time = new Date(value).getTime();
-    if (Number.isNaN(time)) return value;
-    return String(BigInt(time - 1420070400000) << 22n);
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed)) return trimmed; // already a snowflake
+    const time = new Date(trimmed).getTime();
+    if (Number.isNaN(time)) throw new Error(`"${value}" is not a message ID or a date (try 2024-01-31).`);
+    return String(BigInt(Math.max(0, time - DISCORD_EPOCH)) << 22n);
 }
 
 /**
@@ -259,6 +262,10 @@ const MAX_CONSECUTIVE_HARD_ERRORS = 5;
 const MAX_CONSECUTIVE_DELETE_FAILURES = 15;
 const MAX_STUCK_PAGES = 3;
 const MAX_LOG_ENTRIES = 80;
+/** 429s on one message before it counts as failed (they don't use up attempts) */
+const MAX_RATE_LIMITS_PER_MESSAGE = 10;
+/** after this many deletions in a row without a 429, ease the delete delay back down */
+const DELAY_RECOVERY_STREAK = 20;
 
 /**
  * How long to keep re-asking after the search returns nothing before a scan is
@@ -308,6 +315,9 @@ export class DeleteJob {
     private warnedAboutOthers = false;
     private stuckPages = 0;
     private stopReason?: string;
+    /** the delete delay the user asked for; 429s raise the live one above it */
+    private baseDeleteDelayMs: number;
+    private deleteStreak = 0;
 
     constructor(filters: DeleteFilters, tuning: DeleteTuning, deps: Partial<Deps> = {}) {
         this.filters = filters;
@@ -322,16 +332,18 @@ export class DeleteJob {
             maxAttemptsPerMessage: Math.max(1, tuning.maxAttemptsPerMessage),
             maxSweeps: Math.max(1, tuning.maxSweeps | 0),
         };
+        this.baseDeleteDelayMs = this.tuning.deleteDelayMs;
 
         this.userMinId = filters.minId ? toSnowflake(filters.minId) : undefined;
         this.userMaxId = filters.maxId ? toSnowflake(filters.maxId) : undefined;
 
         if (filters.pattern) {
+            // A malformed regex must stop the job: ignoring it (as undiscord
+            // does) would widen the filter to every message you ever sent.
             try {
                 this.pattern = new RegExp(filters.pattern, "i");
-            } catch {
-                // malformed regex -> ignore the pattern filter, same as undiscord
-                this.pattern = undefined;
+            } catch (e) {
+                throw new Error(`Invalid regex pattern: ${(e as Error).message}`);
             }
         }
     }
@@ -489,6 +501,7 @@ export class DeleteJob {
         this.hitFallbackUsed = false;
         this.warnedAboutOthers = false;
         this.stuckPages = 0;
+        this.deleteStreak = 0;
         this.stopReason = undefined;
         this.state.running = true;
 
@@ -882,7 +895,8 @@ export class DeleteJob {
             toDelete = toDelete.filter(m => regex.test(String(m.content ?? "")));
         }
 
-        const skipped = mine.filter(m => !toDelete.some(d => d.id === m.id));
+        const queued = new Set(toDelete.map(m => m.id));
+        const skipped = mine.filter(m => !queued.has(m.id));
 
         this.state.queuedCount += toDelete.length;
         this.state.filteredCount += skipped.length;
@@ -911,19 +925,26 @@ export class DeleteJob {
             const message = list[i];
 
             let result: DeleteResult = "FAILED";
-            for (let attempt = 0; attempt < this.tuning.maxAttemptsPerMessage; attempt++) {
+            let attempts = 0;
+            let rateLimits = 0;
+            for (;;) {
                 result = await this.deleteMessage(message);
-                if (result !== "RETRY") break;
-                if (this.state.stopRequested) break;
-                if (attempt < this.tuning.maxAttemptsPerMessage - 1) {
-                    await this.sleep(jitter(this.tuning.deleteDelayMs));
+                if (result === "RATE_LIMITED") {
+                    // the 429 handler already waited; this is Discord saying
+                    // "slower", not the message failing
+                    if (++rateLimits < MAX_RATE_LIMITS_PER_MESSAGE && !this.state.stopRequested) continue;
+                    break;
                 }
+                if (result !== "RETRY") break;
+                if (++attempts >= this.tuning.maxAttemptsPerMessage || this.state.stopRequested) break;
+                await this.sleep(jitter(this.tuning.deleteDelayMs) * attempts);
             }
 
             switch (result) {
                 case "OK":
                     deleted++;
                     this.consecutiveDeleteFailures = 0;
+                    this.recoverDeleteDelay();
                     break;
                 case "GONE":
                 case "SKIPPED":
@@ -955,6 +976,20 @@ export class DeleteJob {
         return { deleted, abortReason: null as string | null };
     }
 
+    /**
+     * A 429 raises the delete delay to Discord's retry_after, which can be
+     * several seconds for a single burst. Undiscord keeps it there forever;
+     * here a long enough run of clean deletions eases it back toward what you
+     * configured, and the next 429 pushes it straight back up.
+     */
+    private recoverDeleteDelay() {
+        if (++this.deleteStreak < DELAY_RECOVERY_STREAK) return;
+        this.deleteStreak = 0;
+        if (this.tuning.deleteDelayMs <= this.baseDeleteDelayMs) return;
+        this.tuning.deleteDelayMs = Math.max(this.baseDeleteDelayMs, Math.round(this.tuning.deleteDelayMs * 0.8));
+        this.log("info", `No rate limits for a while - lowering the delete delay to ${this.tuning.deleteDelayMs}ms.`);
+    }
+
     private async deleteMessage(message: SearchMessage): Promise<DeleteResult> {
         const url = `/channels/${message.channel_id}/messages/${message.id}`;
         try {
@@ -971,19 +1006,26 @@ export class DeleteJob {
                 const retryMs = getRetryAfterMs(err) ?? this.tuning.deleteDelayMs;
                 this.stats.throttledCount++;
                 this.stats.throttledTotalTime += retryMs;
+                this.deleteStreak = 0;
                 this.tuning.deleteDelayMs = Math.max(this.tuning.deleteDelayMs, retryMs);
                 this.log("warn", `Rate limited while deleting - raising the delete delay to ${this.tuning.deleteDelayMs}ms.`);
                 this.emit();
                 await this.sleep(retryMs * 2);
-                return "RETRY";
+                return "RATE_LIMITED";
             }
 
-            const body = (err as any)?.body;
-            if (status === 400 && body?.code === 50083) {
-                // Thread archived - can't delete, just move on (the cursor
-                // already guarantees we won't be asked about it again)
+            const code = (err as any)?.body?.code;
+            if (code === 50083 || code === 50021) {
+                // archived thread / system message - Discord will never let
+                // us delete it, so move on (the cursor won't offer it again)
                 this.state.skipCount++;
                 return "SKIPPED";
+            }
+
+            if (status == null || status >= 500) {
+                // network blip or Discord having a moment - worth another try
+                this.log("warn", `Deleting a message failed (status ${status ?? "network error"}) - retrying.`);
+                return "RETRY";
             }
 
             if (status === 404) {
@@ -998,7 +1040,7 @@ export class DeleteJob {
     }
 }
 
-type DeleteResult = "OK" | "RETRY" | "FAILED" | "SKIPPED" | "GONE";
+type DeleteResult = "OK" | "RETRY" | "RATE_LIMITED" | "FAILED" | "SKIPPED" | "GONE";
 
 // ---------------------------------------------------------------------------
 // Scope resolution helpers used by index.tsx

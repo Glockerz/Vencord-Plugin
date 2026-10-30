@@ -46,7 +46,7 @@ function makeJob(fake: FakeDiscord, filterOverrides: Partial<DeleteFilters> = {}
     });
 
     const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("job did not finish within 10s (possible infinite loop)")), 10000)
+        setTimeout(() => reject(new Error("job did not finish within 10s (possible infinite loop)")), 10000).unref()
     );
 
     return { job, done: Promise.race([done, timeout]) };
@@ -389,4 +389,40 @@ test("gives up with a clear message when Discord refuses every deletion", async 
     assert.match(reason, /failed in a row/);
     assert.equal(state.failCount, 15, "it must stop instead of burning through the whole channel");
     assert.equal(job.state.running, false);
+});
+
+test("a malformed regex refuses to start instead of deleting everything", () => {
+    const fake = new FakeDiscord({ messages: buildChannel({ mine: 5, others: 0 }).messages });
+    assert.throws(() => makeJob(fake, { pattern: "(unclosed" }), /Invalid regex/);
+});
+
+test("an unreadable date refuses to start instead of being sent as-is", () => {
+    const fake = new FakeDiscord({ messages: buildChannel({ mine: 5, others: 0 }).messages });
+    assert.throws(() => makeJob(fake, { minId: "last tuesday" }), /not a message ID or a date/);
+});
+
+test("a server error is retried right away instead of failing the message", async () => {
+    const { messages } = buildChannel({ mine: 6, others: 0 });
+    const fake = new FakeDiscord({ messages, deleteStatuses: [500] });
+    const { job, done } = makeJob(fake);
+
+    job.run();
+    const { state } = await done;
+
+    assert.equal(fake.deleted.size, 6);
+    assert.equal(state.failCount, 0);
+    assert.ok(!state.log.some(l => /Retrying \d+ failed/.test(l.text)), "it should not need the end-of-run retry pass");
+});
+
+test("rate limits do not use up a message's attempts", async () => {
+    const { messages } = buildChannel({ mine: 4, others: 0 });
+    // more 429s in a row than maxAttemptsPerMessage
+    const fake = new FakeDiscord({ messages, deleteStatuses: [429, 429, 429, 429, 429] });
+    const { job, done } = makeJob(fake, {}, { maxAttemptsPerMessage: 2 });
+
+    job.run();
+    const { state } = await done;
+
+    assert.equal(fake.deleted.size, 4);
+    assert.equal(state.failCount, 0);
 });

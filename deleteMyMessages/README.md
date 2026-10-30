@@ -21,9 +21,13 @@ itself performs requests.
 - **Configurable search/delete delays** with enforced safe minimums
   (400ms / 300ms floors).
 - **Automatic backoff + retry** on HTTP `429` (rate limited) and `202`
-  (search index not ready yet) responses. Like `undiscord-core.js`, the
-  delay is permanently raised after being throttled so the tool adapts to
-  Discord's current rate limits instead of hammering the API.
+  (search index not ready yet) responses. After being throttled the delay is
+  raised to Discord's `retry_after`, then eased back toward your setting once
+  deletions have gone through cleanly for a while. Rate limits don't use up a
+  message's attempts; server errors (`5xx`, network drops) are retried.
+- **Refuses bad filters.** A malformed regex or an unreadable date stops the
+  job before it starts, instead of being ignored and widening the deletion to
+  every message you sent.
 - **Visible Stop button** to abort a running job at any time. Closing the
   window does *not* stop it (that's the point) — the chat-box button is always
   there to reopen it, and turning the plugin off stops any running job.
@@ -114,7 +118,7 @@ Everything in the UI is counted from messages the tool actually inspected:
 | --- | --- | --- |
 | `searchDelay` | 1500ms | delay between search requests (400ms floor) |
 | `deleteDelay` | 1200ms | delay between deletions (300ms floor) |
-| `maxAttempts` | 3 | delete attempts per message |
+| `maxAttempts` | 3 | delete attempts per message on server/network errors (rate limits don't count) |
 | `maxScans` | 5 | full oldest→newest scans; a scan that deletes nothing ends the job |
 | `addContextMenuEntry` | on | adds "Delete My Messages…" to channel/DM menus |
 

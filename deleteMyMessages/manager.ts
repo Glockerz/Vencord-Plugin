@@ -12,7 +12,7 @@
  * deleting - the modal is only ever a view onto whatever is running.
  */
 
-import { showToast, Toasts } from "@webpack/common";
+import { showToast } from "@webpack/common";
 
 import { DeleteJob, type DeleteFilters, type DeleteTuning, type Deps, type JobState, type JobStats } from "./engine";
 
@@ -105,7 +105,7 @@ class JobManager {
                 this.confirmResolve = resolve;
             });
             this.emit();
-            showToast("DeleteMyMessages is waiting for you to confirm the deletion", Toasts.Type.MESSAGE);
+            showToast({ text: "DeleteMyMessages is waiting for you to confirm the deletion" });
             return answer;
         };
 
@@ -119,14 +119,21 @@ class JobManager {
             this.emit();
 
             const seconds = Math.round(job.elapsedMs() / 1000);
-            showToast(
-                `DeleteMyMessages: ${state.delCount} deleted in ${seconds}s - ${reason}`,
-                state.failCount > 0 ? Toasts.Type.FAILURE : Toasts.Type.SUCCESS
-            );
+            showToast({
+                text: `DeleteMyMessages: ${state.delCount} deleted in ${seconds}s - ${reason}`,
+                variant: state.failCount > 0 ? "critical" : "success",
+            });
         };
 
-        // deliberately not awaited - the job runs in the background from here
-        job.run();
+        // deliberately not awaited - the job runs in the background from here.
+        // run() handles its own errors; this only catches a throwing listener,
+        // which must not leave the job marked as running forever.
+        job.run().catch(err => {
+            console.error("[DeleteMyMessages]", err);
+            entry.done = true;
+            this.confirmResolve = null;
+            this.emit();
+        });
         this.emit();
 
         return entry;

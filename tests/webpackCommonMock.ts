@@ -37,17 +37,8 @@ export const GuildStore = {
 };
 
 /** toasts shown by the plugin, so tests can assert on them */
-export const toastLog: { message: string; type?: string; }[] = [];
+export const toastLog: { text: string; variant?: string; }[] = [];
 
-export const Toasts = {
-    Type: { SUCCESS: "success", FAILURE: "failure", MESSAGE: "message" },
-    Position: { BOTTOM: 0 },
-    genId: () => Math.random().toString(36).slice(2),
-    show: (data: any) => toastLog.push(data),
-    pop: () => { },
-    create: (message: string, type: string) => ({ message, type }),
-};
-
-export function showToast(message: string, type?: string) {
-    toastLog.push({ message, type });
+export function showToast(data: { text: string; variant?: string; }) {
+    toastLog.push(data);
 }
